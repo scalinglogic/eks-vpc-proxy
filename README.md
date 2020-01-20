@@ -12,15 +12,15 @@ As part of your security controls, it is prudent to have a mechanism that can re
 
 Here, we demonstrate how EKS nodes can be secured inside private subnets, and how outgoing http requests can be made secure by using EC2 Proxies running Squid software. The same pattern can be employed for non-EKS Kubernetes.
 
-Benefits of the outgoing proxy solution described here are:
+The benefits of this outgoing proxy solution are:
 
  
 1. Public access to your EKS nodes is not enabled (i.e. the nodes are in Private subnets, and incoming access via the proxies is blocked)
 2. Outgoing connectivity can be filtered on URL of trusted domains - this protects against code which attempts to download malware - either intentionally or unintentionally. For example outgoing access can be restricted to only amazon aws services if the whitelist contains only '.amazonaws.com'.
-3. Outgoing connectivity can be monitored and unapproved outgoing access attempts can be configured raise alerts.
+3. Outgoing connectivity can be monitored and unapproved outgoing access attempts can be configured to raise alerts.
 4. Elastic IPs can be attached to each proxy instance - this is useful when destination websites have their own whitelist of allowed traffic that they accept connections from.
-5. High Availability (proxies across multiple Availability Zones).
-6. Fully scalable (using AWS Scaling Group to scale up outgoing proxies as required).
+5. Highly Availabile Architecture (proxies across multiple Availability Zones).
+6. Fully Scalable Architecture (using AWS Scaling Group to scale up outgoing proxies as required).
 
 [Cloudformation templates used in this post can be found here.](https://github.com/scalinglogic/eks-vpc-proxy)
 
@@ -32,6 +32,8 @@ Benefits of the outgoing proxy solution described here are:
 
 ## Deployment/Configuration Instructions
 
+
+Assumptions are that a VPC already exists (default VPC for example) in which exists a Linux EC2 instance that is configured with kubernetes kubectl client and all associated software.  This is shown as the 'EC2 Bastion Server' in the Solution Architecture.
 
 ### 1. Create an EKS specific VPC using EKS-VPC.yaml
 
@@ -57,7 +59,7 @@ This Cloudformation Stack creates an EKS Service Role, which allows Amazon EKS t
 
 This Cloudformation Stack creates the EKS cluster. In our case we have called the cluster 'EKSdemo'. 
 
-This step can take around 10 minutes, as a new VPC in aws containing master/etcd EC2 nodes is created. 
+This step can take around 10 minutes, as a new VPC in AWS containing master/etcd EC2 nodes is created. 
 
 The infrastructure created here is totally under the control and management of AWS and as such we can only see this as an EKS cluster in our console - we cannot see its VPC, loadbalancers or EC2 instances.
 
@@ -70,9 +72,9 @@ Following creation of the EKS cluster take a note of the API endpoint URL for la
 
 ### 4. Making the EKS Cluster API endpoint private
 
-Cloudformation does not allow us to create the EKS cluster with a private API endpoint, but defaults to a public API endpoint.  For our purposes, we want this endpoint to be private, which can be done manually.
+Cloudformation does not allow us to create the EKS cluster with a private API endpoint, but defaults to a public API endpoint.  For our purposes, we want this endpoint to be private. This can be done manually through the AWS console.
 
-In the AWS console, navigate to EKS/Clusters and select the EKSdemo cluster that we have just created.
+Navigate to EKS/Clusters and select the EKSdemo cluster that we have just created.
 
 ![EKS demo Cluser](images/EKSdemoCluser.png)
 
@@ -89,19 +91,19 @@ After around 10 minutes or so the API endpoint should be Private as shown:
 ![EKS Private Endpoint](images/EKSClusterPrivate.png)
 
 
-### 5. Peer the VPCs between your EC2 Bastion instance and the EKS nodes
+### 5. Peer the VPCs to enable communication between EC2 Bastion instance and the EKS nodes
 
-Peering the VPCs is outside of the scope of this demo, but Cloudformation code to perform this can be found <HERE>
+Peering the VPCs is outside of the scope of this demo but there are numerous examples of this on the internet. Peering between the VPCs must be enabled, as the EKS private endpoint will have a CIDR address inside the VPC CIDR range. In order to communicate with the EKS API the bastion server will need to be able to route to the EKS VPC, using this peering connection.
 
 ### 6. Create kubeconfig on bastion server
 
-The following command creates the relevant kubeconfig file in order that kubectl can connect to the correct EKS cluster:
+The following command executed on the bastion EC2 instance creates the relevant kubeconfig file in order that kubectl can connect to the correct EKS cluster:
 
 ```
 aws eks --region <region> update-kubeconfig --name <cluster_name>
 ```
 
-In our EKS demo example to command is:
+In our EKS demo example the command is:
 
 ```
 aws eks --region eu-west-2 update-kubeconfig --name EKSdemo
@@ -110,9 +112,14 @@ aws eks --region eu-west-2 update-kubeconfig --name EKSdemo
 
 ### 7. Allow Bastian Server access to API Server on Port 443
 
+
+In the AWS console navigate to EC2/SecurityGroups and on the ControlPlane Security Group edit the Inbound Rules to allow access from the bastion server Security Group on port 443.
+
 ![EKS ControlPlane Sceurity Group](images/EKSControlPlaneSecurityGroup.png)
 
 ### 8. Prove access to the newly created EKSdemo cluster over Private Endpoint
+
+From the command line on the bastion server:
 
 ```
 $ kubectl get svc
@@ -122,18 +129,18 @@ kubernetes   ClusterIP   10.100.0.1   <none>        443/TCP   67m
 
 ### 9. Create Proxy using EKS-Proxy.yaml
 
+In the 'Proxy Parameter' provide the allowable outgoing domains which make up the allowed URL whitelist.
+
 ![EKS Proxy Parameters](images/EKSProxyParameters.png)
 
-
-
 ![EKS Proxy Outputs](images/EKSProxyOutputs.png)
-
 
 ### 10. Create EKS Node Group using EKS-Nodegroup-WithProxy.yaml
 
 ![EKS Node Group Parameters](images/EKSNodeGroupParameters.png)
 
 
+From the Cloudformation Outputs, note down the Outbound Proxy Domain as we will require this later.
 
 ![EKS Node Group Outputs](images/EKSNodeGroupOutputs.png)
 
@@ -143,7 +150,7 @@ kubernetes   ClusterIP   10.100.0.1   <none>        443/TCP   67m
 ![EKS Cloudformation Review](images/EKSCloudformationReview.png)
 
 
-At this stage the nodes group has been created, but has not yet been able to join the cluster:
+At this stage the EKS nodes have been created, but have not yet been able to join the cluster:
 
 
 ![EKS Cloudformation Review](images/EKSRunningInstances.png)
@@ -164,22 +171,17 @@ kube-system   coredns-85bb8bb6bc-d4s5g   0/1     Pending   0          108m
 
 [ec2-user@ip-172-31-0-79 ~]$ kubectl describe pod coredns-85bb8bb6bc-76442 -n kube-system
 Name:               coredns-85bb8bb6bc-76442
-
 .........
-
 Status:             Pending
-
 .........
-
 Events:
   Type     Reason            Age                    From               Message
   ----     ------            ----                   ----               -------
   Warning  FailedScheduling  52s (x132 over 3h17m)  default-scheduler  no nodes available to schedule pod
 ```
 
-As root, when logged on to one of the nodes (see other blogpost), you will be able to see kubelet errors about being Unauthorized when trying to talk to the API endpoint 
+As root, when logged on to one of the nodes, you will be able to see kubelet errors messages about being Unauthorized when trying to talk to the API endpoint 
 ```
-
 # journalctl -u kubelet.service
 
 Jan 16 14:50:08 ip-172-32-2-26.eu-west-2.compute.internal kubelet[3859]: E0116 14:50:08.474427    3859 reflector.go:126] k8s.io/client-go/informers/factory.go:133: Failed to list *v1beta1.RuntimeClass: Unauthorized
@@ -192,7 +194,7 @@ Jan 16 14:50:08 ip-172-32-2-26.eu-west-2.compute.internal kubelet[3859]: E0116 1
 To resolve this issue, we must authorize the nodes to speak to the API.
 To do this, the EKS authorisation ConfigMap must be downloaded, modified with the EKS Node Role, and then deployed to the EKS cluster
 
-Firstly download aws-auth-cm.yaml
+Firstly, on the bastion, download aws-auth-cm.yaml
 
 ```
 curl -o aws-auth-cm.yaml https://amazon-eks.s3-us-west-2.amazonaws.com/cloudformation/2019-11-15/aws-auth-cm.yaml
@@ -264,11 +266,19 @@ kubectl get service kubernetes -o jsonpath='{.spec.clusterIP}'; echo
 
 This returns either 10.100.0.1, or 172.20.0.1, which means that your cluster IP CIDR block is either 10.100.0.0/16 or 172.20.0.0/16.
 
+We need to create a YAML file (proxy-env-vars-config.yaml) as below, and edit it as per the example.
 
+In our example:
+ - Cluster IP CIDR range is 10.100.0.0/16
+ - Proxy URL is http://OutboundProxyLoadBalancer-969e3fb6f912fb6c.elb.eu-west-2.amazonaws.com:3128
+ - EKS cluster endpoint is 683CE8237FD9D8D8359CB071C0ACB258.yl4.eu-west-2.eks.amazonaws.com
+
+All other values should stay the same (assumes VPC S3 endpoint for access to S3 buckets).
 
 ```
 $cat proxy-env-vars-config.yaml 
 
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: proxy-environment-variables
