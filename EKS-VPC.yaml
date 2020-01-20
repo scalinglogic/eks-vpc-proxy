@@ -1,0 +1,213 @@
+# ScalingLogic 2020, www.scalinglogic.com
+# Tested building EKS, Kubernetes version 1.14.9
+# This software is for demonstration purposes, on an "as is" basis, withouit warranties or conditions of any kind, either express or implied
+
+Description: Amazon EKS sample VPC, two private subnets, two public subnets, and internet gateway
+Parameters:
+  VpcBlock:
+    Type: String
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(/([0-9]|[1-2][0-9]|3[0-2]))$
+    Default: 172.32.0.0/16
+    Description: >-
+      The CIDR range for the VPC. This should be a valid private (RFC 1918) CIDR
+      range.
+  PrivateSubnet01CidrBlock:
+    Type: String
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(/([0-9]|[1-2][0-9]|3[0-2]))$
+    Default: 172.32.1.0/24
+    Description: CidrBlock for Private subnet 01 within the VPC
+  PrivateSubnet02CidrBlock:
+    Type: String
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(/([0-9]|[1-2][0-9]|3[0-2]))$
+    Default: 172.32.2.0/24
+    Description: CidrBlock for Private subnet 02 within the VPC
+  PublicSubnet01CidrBlock:
+    Type: String
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(/([0-9]|[1-2][0-9]|3[0-2]))$
+    Default: 172.32.3.0/24
+    Description: CidrBlock for Public subnet 01 within the VPC
+  PublicSubnet02CidrBlock:
+    Type: String
+    AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(/([0-9]|[1-2][0-9]|3[0-2]))$
+    Default: 172.32.4.0/24
+    Description: CidrBlock for Public subnet 02 within the VPC
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+      - Label:
+          default: Worker Network Configuration
+        Parameters:
+          - VpcBlock
+          - PrivateSubnet01CidrBlock
+          - PrivateSubnet02CidrBlock
+          - PublicSubnet01CidrBlock
+          - PublicSubnet02CidrBlock
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Ref VpcBlock
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-VPC'
+
+  PrivateSubnet01:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone:
+        'Fn::Select':
+          - '0'
+          - 'Fn::GetAZs':
+              Ref: 'AWS::Region'
+      CidrBlock:
+        Ref: PrivateSubnet01CidrBlock
+      VpcId:
+        Ref: VPC
+      MapPublicIpOnLaunch: 'false'
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PrivateSubnet01'
+  PrivateSubnet02:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone:
+        'Fn::Select':
+          - '1'
+          - 'Fn::GetAZs':
+              Ref: 'AWS::Region'
+      CidrBlock:
+        Ref: PrivateSubnet02CidrBlock
+      VpcId:
+        Ref: VPC
+      MapPublicIpOnLaunch: 'false'
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PrivateSubnet02'
+  PublicSubnet01:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone:
+        'Fn::Select':
+          - '0'
+          - 'Fn::GetAZs':
+              Ref: 'AWS::Region'
+      CidrBlock:
+        Ref: PublicSubnet01CidrBlock
+      VpcId:
+        Ref: VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PublicSubnet01'
+  PublicSubnet02:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone:
+        'Fn::Select':
+          - '1'
+          - 'Fn::GetAZs':
+              Ref: 'AWS::Region'
+      CidrBlock:
+        Ref: PublicSubnet02CidrBlock
+      VpcId:
+        Ref: VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PublicSubnet02'
+
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+  VPCGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'VPC'
+      Tags:
+        - Key: Name
+          Value: Public Route Table
+        - Key: Network
+          Value: Public
+
+  AttachPublicSubnet1RouteTable:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref 'PublicRouteTable'
+      SubnetId: !Ref 'PublicSubnet01'
+
+  AttachPublicSubnet2RouteTable:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref 'PublicRouteTable'
+      SubnetId: !Ref 'PublicSubnet02'
+
+  PublicRoutetoInternet:
+    DependsOn: VPCGatewayAttachment
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref 'InternetGateway'
+      RouteTableId: !Ref 'PublicRouteTable'
+ 
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'VPC'
+      Tags:
+        - Key: Name
+          Value: Private Route Table 1
+  AttachPrivateSubnet1RouteTable1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref 'PrivateRouteTable1'
+      SubnetId: !Ref 'PrivateSubnet01'
+  AttachPrivateSubnet2RouteTable1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref 'PrivateRouteTable1'
+      SubnetId: !Ref 'PrivateSubnet02'
+
+  ControlPlaneSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Cluster communication with worker nodes
+      VpcId: !Ref VPC
+Outputs:
+  PrivateSubnetId01:
+    Description: Private Subnet 01 in the VPC
+    Value: !Ref PrivateSubnet01
+    Export:
+      Name: EKS-PrivateSubnet01
+  PrivateSubnetId02:
+    Description: Private Subnet 02 in the VPC
+    Value: !Ref PrivateSubnet02
+    Export:
+      Name: EKS-PrivateSubnet02
+  PublicSubnetId01:
+    Description: Public Subnet 01 in the VPC
+    Value: !Ref PublicSubnet01
+    Export:
+      Name: EKS-PublicSubnet01
+  PublicSubnetId02:
+    Description: Public Subnet 02 in the VPC
+    Value: !Ref PublicSubnet02
+    Export:
+      Name: EKS-PublicSubnet02
+  SecurityGroups:
+    Description: >-
+      Security group for the cluster control plane communication with worker
+      nodes
+    Value: !Ref ControlPlaneSecurityGroup 
+    Export:
+      Name: EKS-ControlPlaneSecurityGroupId
+  VpcId:
+    Description: The VPC Id
+    Value: !Ref VPC
+    Export:
+      Name: EKS-VPCId

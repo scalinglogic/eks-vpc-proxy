@@ -1,0 +1,38 @@
+# ScalingLogic 2020, www.scalinglogic.com
+# Tested building EKS, Kubernetes version 1.14.9
+# This software is for demonstration purposes, on an "as is" basis, withouit warranties or conditions of any kind, either express or implied
+
+AWSTemplateFormatVersion: 2010-09-09
+Description: Amazon EKS Cluster
+Parameters:
+  EKSClusterName:
+    Type: String
+    Default: EKSdemo
+    Description: >-
+      EKS Cluster name
+
+  EKSKubernetesVersion:
+    Type: String
+    Default: 1.14
+    Description: Kubernetes version
+
+Resources:
+  Cluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref EKSClusterName
+      Version: !Ref EKSKubernetesVersion
+      RoleArn: !ImportValue EKS-RoleARN
+      ResourcesVpcConfig:
+        SecurityGroupIds: 
+        - !ImportValue EKS-ControlPlaneSecurityGroupId
+        SubnetIds:
+        - !ImportValue EKS-PrivateSubnet01
+        - !ImportValue EKS-PrivateSubnet02
+
+Outputs:
+  EKSEndpoint:
+    Description: EKS Cluster Endpoint
+    Value: !GetAtt Cluster.Endpoint
+    Export:
+      Name: EKSEndpoint
