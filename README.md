@@ -22,7 +22,7 @@ Benefits of the outgoing proxy solution described here are:
 5. High Availability (proxies across multiple Availability Zones).
 6. Fully scalable (using AWS Scaling Group to scale up outgoing proxies as required).
 
-[Cloudformation templates used in this post can be found here.](https://aws.amazon.com/premiumsupport/knowledge-center/eks-http-proxy-configuration-automation/)
+[Cloudformation templates used in this post can be found here.](https://github.com/scalinglogic/eks-vpc-proxy)
 
 ## Solution Architecture
 
